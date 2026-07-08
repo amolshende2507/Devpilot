@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     DATABASE_URL: str
+    
+    SUPABASE_URL: str
+
+    SUPABASE_JWT_SECRET: str
 
 
     model_config = SettingsConfigDict(
