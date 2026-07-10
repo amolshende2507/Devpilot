@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
 
     SUPABASE_JWT_SECRET: str
+    
+    SUPABASE_KEY: str
 
 
     model_config = SettingsConfigDict(
