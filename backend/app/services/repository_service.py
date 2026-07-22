@@ -1,12 +1,19 @@
 import os
 import shutil
 import tempfile
-import stat  # <-- NEW: Used for manipulating Windows file flags
+import stat
+import uuid
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from git import Repo
+
 from app.models.project import Project
 from app.models.repository_file import RepositoryFile
+
+# Import our code-intelligence dependencies
+from app.services.chunking_service import ChunkingService
+from app.services.embedding_service import EmbeddingService
+from app.core.vector_db import get_collection
 
 
 def remove_readonly(func, path, excinfo):
@@ -16,14 +23,12 @@ def remove_readonly(func, path, excinfo):
 
 
 class RepositoryService:
-    # Set of file extensions we want to index
     SUPPORTED_EXTENSIONS = {
         ".py", ".js", ".ts", ".tsx", ".jsx", ".go", 
         ".rs", ".java", ".cpp", ".c", ".h", ".cs", 
         ".md", ".json", ".yaml", ".yml", ".sql", ".html", ".css"
     }
 
-    # Directories we absolutely want to skip
     IGNORED_DIRECTORIES = {
         ".git", "node_modules", "venv", "env", ".venv", 
         "__pycache__", "dist", "build", "target", "out",
@@ -32,6 +37,9 @@ class RepositoryService:
 
     def __init__(self, db: Session):
         self.db = db
+        # Initialize our local NLP dependencies
+        self.chunking_service = ChunkingService()
+        self.embedding_service = EmbeddingService()
 
     def import_repository(self, user_id: str, name: str, github_url: str) -> Project:
         """Initializes a new project tracking record in the local database."""
@@ -47,21 +55,19 @@ class RepositoryService:
         return project
 
     def process_repository(self, project_id: str) -> dict:
-        """Clones, filters, and extracts text content of repository files."""
+        """Clones, indexes, and generates vector embeddings for repository files."""
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise ValueError("Target project does not exist.")
 
-        # Update status to show we are actively processing
         project.status = "cloning"
         self.db.commit()
 
-        # Create a secure temporary directory on the host disk
         temp_dir = tempfile.mkdtemp()
         print(f"⏳ Local workspace initialized at: {temp_dir}")
 
         try:
-            # 1. Clone the public repository
+            # 1. Clone the repository
             print(f"⏳ Cloning {project.github_url}...")
             Repo.clone_from(project.github_url, temp_dir, depth=1)
             
@@ -69,8 +75,8 @@ class RepositoryService:
             self.db.commit()
             print("✅ Cloning complete. Starting directory scan...")
 
-            # 2. Walk the workspace and process files
-            saved_count = 0
+            # 2. Walk and extract files
+            saved_files: list[RepositoryFile] = []
             for root, dirs, files in os.walk(temp_dir):
                 dirs[:] = [d for d in dirs if d not in self.IGNORED_DIRECTORIES]
 
@@ -92,25 +98,76 @@ class RepositoryService:
                                     content=file_content
                                 )
                                 self.db.add(repo_file)
-                                saved_count += 1
+                                saved_files.append(repo_file)
                         except Exception as file_err:
                             print(f"⚠️ Skipped processing file {relative_path}: {str(file_err)}")
 
+            # Save raw file payloads in PostgreSQL
             self.db.commit()
+            print(f"✅ Saved {len(saved_files)} files in PostgreSQL. Running Vectorization...")
+
+            # 3. Vectorization & Seeding Pipeline
+            collection = get_collection() # Retrieve our ChromaDB index
+            total_chunks_indexed = 0
+
+            for file in saved_files:
+                # A. Generate smart structural text chunks
+                chunks = self.chunking_service.split_file(file)
+                if not chunks:
+                    continue
+
+                # Prepare batches for ChromaDB
+                chunk_ids: list[str] = []
+                chunk_texts: list[str] = []
+                chunk_metadatas: list[dict] = []
+
+                for chunk in chunks:
+                    # Generate a unique key for each chunk
+                    chunk_id = f"chunk_{uuid.uuid4()}"
+                    chunk_ids.append(chunk_id)
+                    chunk_texts.append(chunk.content) # Injected with rich directory headers
+                    
+                    # Store precise relational file properties as vector metadata
+                    chunk_metadatas.append({
+                        "project_id": project.id,
+                        "file_path": file.path,
+                        "language": file.language if file.language else "text",
+                        "start_line": chunk.start_line,
+                        "end_line": chunk.end_line
+                    })
+
+                # B. Batch-generate local embedding vectors
+                # This is highly optimized (matrix-matrix parallel math)
+                chunk_embeddings = self.embedding_service.generate_embeddings(chunk_texts)
+
+                # C. Write directly to ChromaDB
+                collection.add(
+                    ids=chunk_ids,
+                    embeddings=chunk_embeddings,
+                    documents=chunk_texts,
+                    metadatas=chunk_metadatas
+                )
+                total_chunks_indexed += len(chunks)
+
             project.status = "completed"
             self.db.commit()
-            print(f"✅ Processing complete! Indexed {saved_count} files.")
-            return {"status": "success", "files_indexed": saved_count}
+            print(f"🎉 Ingestion pipeline complete! Indexed {len(saved_files)} files into {total_chunks_indexed} vector chunks.")
+            return {"status": "success", "files_indexed": len(saved_files), "vector_chunks": total_chunks_indexed}
 
         except Exception as e:
             self.db.rollback()
             project.status = "failed"
             self.db.commit()
-            print(f"❌ Failed to process repository {project.github_url}: {str(e)}")
+            
+            # NEW: Import traceback and print the complete active stack trace to terminal
+            import traceback
+            print("\n❌ CRITICAL EXCEPTION IN PROCESS_REPOSITORY:")
+            traceback.print_exc() 
+            print("\n")
+            
             return {"status": "failed", "error": str(e)}
 
         finally:
-            # Cleanup Disk: Handle Windows file locking cleanly
             if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, onerror=remove_readonly) # <-- NEW: Pass our handler
-                print(f"Temporary workspace {temp_dir} cleaned from disk.")
+                shutil.rmtree(temp_dir, onerror=remove_readonly)
+                print(f"🧹 Temporary workspace {temp_dir} cleaned from disk.")
