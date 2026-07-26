@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 
-
 class ProjectReviewResponse(BaseModel):
     project_id: str
     status: str
@@ -14,3 +13,9 @@ class ProjectReviewResponse(BaseModel):
         "performance_bottlenecks": 0,
         "refactoring_opportunities": 0
     }
+
+class ProjectDocsResponse(BaseModel):
+    project_id: str
+    status: str
+    # Generated production README markdown
+    readme_content: str

@@ -1,3 +1,4 @@
+import os
 import google.generativeai as genai
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -24,14 +25,12 @@ class ReviewService:
         genai.configure(api_key=settings.GEMINI_API_KEY)
         self.db = db
         self.model = genai.GenerativeModel(
-            model_name="gemini-3.5-flash",
+            model_name="gemini-2.5-flash",
             system_instruction=self.REVIEW_SYSTEM_INSTRUCTIONS
         )
 
     def review_project_codebase(self, project_id: str) -> dict:
         """Audits the files stored in a project database and compiles a code review report."""
-        
-        # 1. Fetch the project and its files
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise HTTPException(
@@ -39,8 +38,7 @@ class ReviewService:
                 detail="Target project not found."
             )
 
-        # Retrieve files (limit to top 15 critical code files to fit context budgets safely)
-        # We prioritize backend files over frontend/config assets
+        # Retrieve critical code files for audit
         files = (
             self.db.query(RepositoryFile)
             .filter(RepositoryFile.project_id == project_id)
@@ -56,7 +54,6 @@ class ReviewService:
                 "review_report": "No critical code files (Python, Go, JS, TS, Rust) were detected for audit."
             }
 
-        # 2. Assemble the Codebase Payload
         code_payload = []
         for file in files:
             block = (
@@ -69,18 +66,16 @@ class ReviewService:
 
         concatenated_code = "\n\n".join(code_payload)
 
-        # 3. Construct prompt
         prompt = (
             f"Analyze this repository codebase and compile a comprehensive Code Review Report:\n\n"
             f"{concatenated_code}\n\n"
             f"Detailed Report:"
         )
 
-        # 4. Generate report
         try:
             response = self.model.generate_content(
                 prompt,
-                generation_config={"temperature": 0.2} # Low temperature ensures analytical precision
+                generation_config={"temperature": 0.2}
             )
         except Exception as e:
             raise HTTPException(
@@ -92,4 +87,89 @@ class ReviewService:
             "project_id": project_id,
             "status": "completed",
             "review_report": response.text if response.text else "Unable to compile review metrics."
+        }
+
+    def generate_project_documentation(self, project_id: str) -> dict:
+        """Analyzes folder structures and configuration files to write custom docs."""
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target project not found."
+            )
+
+        all_files = (
+            self.db.query(RepositoryFile)
+            .filter(RepositoryFile.project_id == project_id)
+            .all()
+        )
+
+        if not all_files:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No files found in the database for this project."
+            )
+
+        # Build directory listing
+        file_paths = [file.path for file in all_files]
+        directory_tree = "\n".join(f"- {path}" for path in sorted(file_paths))
+
+        # Extract config files for bootstrapping context
+        config_files = []
+        target_configs = {
+            "main.py", "requirements.txt", "package.json", 
+            "docker-compose.yml", "Makefile", "go.mod", "cargo.toml"
+        }
+
+        for file in all_files:
+            file_name = os.path.basename(file.path).lower()
+            if file_name in target_configs:
+                block = (
+                    f"--- Configuration File: {file.path} ---\n"
+                    f"{file.content}\n"
+                )
+                config_files.append(block)
+
+        config_payload = "\n\n".join(config_files)
+
+        doc_instructions = (
+            "You are a Senior Technical Writer and Principal Systems Architect.\n"
+            "Your task is to generate a comprehensive, highly professional README.md for the provided repository.\n\n"
+            "The README must include these sections:\n"
+            "1. 🚀 PROJECT INTRODUCTION (A clear description of what the project does based on its codebase)\n"
+            "2. 📦 TECH STACK & DEPENDENCIES (Identified from the configuration files provided)\n"
+            "3. 📂 SYSTEM ARCHITECTURE & FILE TREE (Explain the directory structure and the role of key folders)\n"
+            "4. ⚙️ LOCAL BOOTSTRAPPING GUIDE (Provide step-by-step terminal commands to set up, install, configure, and launch the project)\n\n"
+            "Use clean, professional Markdown formatting."
+        )
+
+        model = genai.GenerativeModel(
+            model_name="gemini-3.5-flash",
+            system_instruction=doc_instructions
+        )
+
+        prompt = (
+            f"Generate a production-ready README.md using this repository context:\n\n"
+            f"=== PROJECT DIRECTORY FILE TREE ===\n"
+            f"{directory_tree}\n\n"
+            f"=== CORE CONFIGURATION FILES ===\n"
+            f"{config_payload}\n\n"
+            f"Generated README.md Content:"
+        )
+
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.2}
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Documentation generation failed: {str(e)}"
+            )
+
+        return {
+            "project_id": project_id,
+            "status": "completed",
+            "readme_content": response.text if response.text else "Unable to compile documentation."
         }
