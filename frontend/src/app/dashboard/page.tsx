@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Link from "next/dist/client/link";
 
 interface Project {
   id: string;
@@ -201,20 +202,24 @@ export default function DashboardPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardFooter className="pt-2 border-t border-zinc-900/60 flex items-center justify-between space-x-2">
-                    <Button 
-                      variant="ghost" 
-                      className="w-1/2 text-xs text-zinc-400 hover:text-white hover:bg-zinc-900/80"
-                      disabled={project.status !== "completed"}
-                    >
-                      AI Code Review
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      className="w-1/2 text-xs text-zinc-400 hover:text-white hover:bg-zinc-900/80"
-                      disabled={project.status !== "completed"}
-                    >
-                      Enter Chat UI
-                    </Button>
+                    <Link href={`/review/${project.id}`} className="w-1/2">
+                      <Button 
+                        variant="ghost" 
+                        className="w-full text-xs text-zinc-400 hover:text-white hover:bg-zinc-900/80"
+                        disabled={project.status !== "completed"}
+                      >
+                        AI Code Review
+                      </Button>
+                    </Link>
+                    <Link href={`/chat/${project.id}`} className="w-1/2">
+                      <Button 
+                        variant="ghost" 
+                        className="w-full text-xs text-zinc-400 hover:text-white hover:bg-zinc-900/80"
+                        disabled={project.status !== "completed"}
+                      >
+                        Enter Chat UI
+                      </Button>
+                    </Link>
                   </CardFooter>
                 </Card>
               ))}

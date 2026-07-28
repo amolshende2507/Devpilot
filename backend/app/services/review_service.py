@@ -1,5 +1,6 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from app.core.config import settings
@@ -22,12 +23,11 @@ class ReviewService:
     def __init__(self, db: Session):
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY configuration is missing.")
-        genai.configure(api_key=settings.GEMINI_API_KEY)
+        
+        # New SDK Client
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.db = db
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=self.REVIEW_SYSTEM_INSTRUCTIONS
-        )
+        self.model_name = "gemini-3.5-flash"
 
     def review_project_codebase(self, project_id: str) -> dict:
         """Audits the files stored in a project database and compiles a code review report."""
@@ -38,7 +38,6 @@ class ReviewService:
                 detail="Target project not found."
             )
 
-        # Retrieve critical code files for audit
         files = (
             self.db.query(RepositoryFile)
             .filter(RepositoryFile.project_id == project_id)
@@ -73,9 +72,14 @@ class ReviewService:
         )
 
         try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config={"temperature": 0.2}
+            # New SDK execution structure
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.REVIEW_SYSTEM_INSTRUCTIONS,
+                    temperature=0.2
+                )
             )
         except Exception as e:
             raise HTTPException(
@@ -110,11 +114,9 @@ class ReviewService:
                 detail="No files found in the database for this project."
             )
 
-        # Build directory listing
         file_paths = [file.path for file in all_files]
         directory_tree = "\n".join(f"- {path}" for path in sorted(file_paths))
 
-        # Extract config files for bootstrapping context
         config_files = []
         target_configs = {
             "main.py", "requirements.txt", "package.json", 
@@ -143,11 +145,6 @@ class ReviewService:
             "Use clean, professional Markdown formatting."
         )
 
-        model = genai.GenerativeModel(
-            model_name="gemini-3.5-flash",
-            system_instruction=doc_instructions
-        )
-
         prompt = (
             f"Generate a production-ready README.md using this repository context:\n\n"
             f"=== PROJECT DIRECTORY FILE TREE ===\n"
@@ -158,9 +155,14 @@ class ReviewService:
         )
 
         try:
-            response = model.generate_content(
-                prompt,
-                generation_config={"temperature": 0.2}
+            # New SDK execution structure
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=doc_instructions,
+                    temperature=0.2
+                )
             )
         except Exception as e:
             raise HTTPException(
