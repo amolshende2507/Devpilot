@@ -4,6 +4,9 @@ from app.db.database import get_db
 from app.schemas.project import ProjectImportRequest, ProjectResponse
 from app.services.repository_service import RepositoryService
 from app.core.security import verify_token
+from app.models.project import Project 
+
+
 
 router = APIRouter(
     prefix="/projects",
@@ -52,3 +55,25 @@ def import_repo(
     # Re-query the updated project payload from DB
     db.refresh(project)
     return project
+
+
+@router.get(
+    "",
+    response_model=list[ProjectResponse],
+    status_code=status.HTTP_200_OK
+)
+def list_projects(
+    db: Session = Depends(get_db),
+    user_payload: dict = Depends(verify_token)
+):
+    """Fetches all repository project structures belonging to the authenticated user."""
+    user_id = user_payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User identifier missing from credential context."
+        )
+
+    # Query public.projects where user_id matches
+    projects = db.query(Project).filter(Project.user_id == user_id).all()
+    return projects
