@@ -15,7 +15,14 @@ class ChatHistory(Base):
     project_id = Column(
         String,
         ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False
+        nullable=False,
+        index=True
+    )
+    session_id = Column(
+        String,
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
     )
     question = Column(
         Text,

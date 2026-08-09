@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 
 class ChatQueryRequest(BaseModel):
     project_id: str
+    session_id: str
     question: str
 
 
