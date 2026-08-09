@@ -128,3 +128,57 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  /* Hide all buttons, navigation bars, headers, and backgrounds */
+  header, 
+  button, 
+  footer, 
+  .relative.z-10.flex-col, 
+  .flex-col.sm\:flex-row {
+    display: none !important;
+  }
+  
+  /* Reset background black grids for clean printing background */
+  body, html, main {
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* Expand the Markdown container to take full page width */
+  .max-w-4xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  
+  .rounded-2xl {
+    border-radius: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+  
+  /* Code blocks formatting for printer paper */
+  pre {
+    background: #f4f4f5 !important;
+    color: #18181b !important;
+    border: 1px solid #e4e4e7 !important;
+    max-height: none !important;
+    white-space: pre-wrap !important;
+  }
+  
+  code {
+    color: #18181b !important;
+  }
+  
+  h1, h2, h3, p, li {
+    color: black !important;
+  }
+  
+  /* Page break rules to prevent splitting code blocks across sheets */
+  pre, h2, h3 {
+    page-break-inside: avoid;
+  }
+}

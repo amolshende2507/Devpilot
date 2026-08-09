@@ -87,7 +87,7 @@ function MarkdownReportRenderer({ rawText }: { rawText: string }) {
               if (trimmed.startsWith("## ")) {
                 const headerText = trimmed.slice(3);
                 let accentColor = "text-white border-zinc-800";
-                
+
                 if (headerText.includes("🚨")) accentColor = "text-red-400 border-red-950/40 bg-red-950/10";
                 if (headerText.includes("🔒")) accentColor = "text-emerald-400 border-emerald-950/40 bg-emerald-950/10";
                 if (headerText.includes("⚡")) accentColor = "text-yellow-400 border-yellow-950/40 bg-yellow-950/10";
@@ -253,44 +253,53 @@ export default function ReviewPage({ params }: PageProps) {
 
       {/* Workspace Dashboard */}
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-8 space-y-8">
-        
+
         {/* Navigation Tabs and Controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
           <div className="flex space-x-2 bg-zinc-900/60 p-1 rounded-lg border border-zinc-800/50 max-w-fit">
             <button
               onClick={() => { setActiveTab("review"); setErrorMsg(""); }}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                activeTab === "review"
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === "review"
                   ? "bg-zinc-800 text-white shadow-sm"
                   : "text-zinc-400 hover:text-white"
-              }`}
+                }`}
             >
               AI Code Review
             </button>
             <button
               onClick={() => { setActiveTab("docs"); setErrorMsg(""); }}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                activeTab === "docs"
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === "docs"
                   ? "bg-zinc-800 text-white shadow-sm"
                   : "text-zinc-400 hover:text-white"
-              }`}
+                }`}
             >
               README.md Generator
             </button>
           </div>
 
-          <Button
-            onClick={activeTab === "review" ? triggerCodeReview : triggerDocGeneration}
-            disabled={isLoading}
-            className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/10 font-semibold text-sm h-10 px-6 transition-all duration-200"
-          >
-            {isLoading 
-              ? "Running AI Analysis..." 
-              : activeTab === "review" 
-              ? "Run Code Review Audit" 
-              : "Generate README.md"
-            }
-          </Button>
+          <div className="flex items-center space-x-2">
+            {activeContent && (
+              <Button
+                onClick={() => window.print()}
+                variant="outline"
+                className="border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900 h-10 px-4"
+              >
+                Export Report
+              </Button>
+            )}
+
+            <Button
+              onClick={activeTab === "review" ? triggerCodeReview : triggerDocGeneration}
+              disabled={isLoading}
+              className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/10 font-semibold text-sm h-10 px-6 transition-all duration-200"
+            >
+              {isLoading
+                ? "Running AI Analysis..."
+                : activeTab === "review"
+                  ? "Run Code Review Audit"
+                  : "Generate README.md"}
+            </Button>
+          </div>
         </div>
 
         {errorMsg && (
