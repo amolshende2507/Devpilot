@@ -14,7 +14,7 @@ class ReviewService:
         "Your task is to analyze files from a user's repository and produce a rigorous, professional Code Review Report.\n\n"
         "Your report must be structured strictly in Markdown using these sections:\n"
         "1. 🚨 CRITICAL BUGS & LOGICAL FAILURES\n"
-        "2. 🔒 SECURITY VULNERABILITIES (SQL Injection, Secret leaks, weak encryption, CORS)\n"
+        "2. 🔒 SECURITY VULULNERABILITIES (SQL Injection, Secret leaks, weak encryption, CORS)\n"
         "3. ⚡ PERFORMANCE BOTTLENECKS (N+1 queries, deadlocks, infinite loops, high memory operations)\n"
         "4. 💡 CLEAN CODE & REFACTORING SUGGESTIONS (Design patterns, modularity, legibility)\n\n"
         "Be extremely direct, technical, and precise. Quote specific file names and line boundaries when referencing issues, and provide copy-pasteable refactored code blocks."
@@ -24,7 +24,6 @@ class ReviewService:
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY configuration is missing.")
         
-        # New SDK Client
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.db = db
         self.model_name = "gemini-3.5-flash"
@@ -42,7 +41,7 @@ class ReviewService:
             self.db.query(RepositoryFile)
             .filter(RepositoryFile.project_id == project_id)
             .filter(RepositoryFile.language.in_(["py", "ts", "js", "go", "rs", "java", "sql"]))
-            .limit(15)
+            .limit(3) # Optimized limit
             .all()
         )
 
@@ -72,7 +71,6 @@ class ReviewService:
         )
 
         try:
-            # New SDK execution structure
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
@@ -82,6 +80,12 @@ class ReviewService:
                 )
             )
         except Exception as e:
+            # NEW: Log exact stack trace for code review crashes
+            import traceback
+            print("\n❌ CRITICAL EXCEPTION IN REVIEW_PROJECT_CODEBASE:")
+            traceback.print_exc()
+            print("\n")
+            
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Automated Code Review execution failed: {str(e)}"
@@ -155,7 +159,6 @@ class ReviewService:
         )
 
         try:
-            # New SDK execution structure
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
@@ -165,6 +168,12 @@ class ReviewService:
                 )
             )
         except Exception as e:
+            # NEW: Log exact stack trace for documentation crashes
+            import traceback
+            print("\n❌ CRITICAL EXCEPTION IN GENERATE_PROJECT_DOCUMENTATION:")
+            traceback.print_exc()
+            print("\n")
+            
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Documentation generation failed: {str(e)}"
