@@ -9,7 +9,7 @@ from app.services.repository_service import RepositoryService
 from app.core.security import verify_token
 from app.core.config import settings
 from app.models.project import Project # <-- NEW: Swapped import mapping
-
+from app.core.vector_db import get_collection # <-- NEW
 router = APIRouter(
     prefix="/projects",
     tags=["Projects & Repositories"]
@@ -85,3 +85,40 @@ def list_projects(
     # Query public.projects where user_id matches
     projects = db.query(Project).filter(Project.user_id == user_id).all()
     return projects
+
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user_payload: dict = Depends(verify_token)
+):
+    """Deletes a repository index, purges its vectors from ChromaDB, and cascade-deletes Postgres records."""
+    user_id = user_payload.get("sub")
+    
+    # 1. Locate the project and verify ownership
+    project = db.query(Project).filter(Project.id == project_id, Project.user_id == user_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Repository index not found or unauthorized access."
+        )
+
+    # 2. Vector Cleanup: Delete all matching code vectors from ChromaDB
+    try:
+        collection = get_collection()
+        # ChromaDB supports metadata filters during deletions
+        collection.delete(where={"project_id": project_id})
+        print(f"🧹 ChromaDB: Purged code vectors for Project ID: {project_id}")
+    except Exception as e:
+        print(f"⚠️ Failed to purge vectors from ChromaDB during project deletion: {str(e)}")
+        # We do not block database deletions if Chroma is temporarily unreachable
+
+    # 3. Relational Cleanup: Delete project from PostgreSQL
+    # (Cascade-deletes files, chats, and sessions)
+    db.delete(project)
+    db.commit()
+    
+    return None

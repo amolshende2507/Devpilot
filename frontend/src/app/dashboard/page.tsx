@@ -69,6 +69,24 @@ export default function DashboardPage() {
       setIsImporting(false);
     }
   };
+  
+  // Locate and append this method inside DashboardPage:
+  const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevents card-click navigation
+    if (!confirm("Are you sure you want to permanently delete this repository index and all associated chats?")) {
+      return;
+    }
+
+    try {
+      await apiFetch(`/projects/${projectId}`, {
+        method: "DELETE",
+      });
+      // Optimistic UI Update: Filter out the deleted project instantly
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    } catch (err: any) {
+      setErrorMsg("Failed to delete repository index: " + err.message);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("devpilot_token");
@@ -181,16 +199,28 @@ export default function DashboardPage() {
                       <span className="text-xs font-mono text-zinc-500 overflow-hidden text-ellipsis max-w-[120px]">
                         ID: {project.id.slice(0, 8)}...
                       </span>
-                      {/* Interactive Status Badges */}
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
-                        project.status === "completed"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                          : project.status === "failed"
-                          ? "bg-red-500/10 text-red-400 border-red-500/20"
-                          : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 animate-pulse"
-                      }`}>
-                        {project.status}
-                      </span>
+                      
+                      {/* Flex container for Badge & Trash Action */}
+                      <div className="flex items-center space-x-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                          project.status === "completed"
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            : project.status === "failed"
+                            ? "bg-red-500/10 text-red-400 border-red-500/20"
+                            : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 animate-pulse"
+                        }`}>
+                          {project.status}
+                        </span>
+                        
+                        {/* NEW: Action Delete Button */}
+                        <button
+                          onClick={(e) => handleDeleteProject(project.id, e)}
+                          className="text-zinc-600 hover:text-red-400 transition-colors p-1 text-sm"
+                          title="Delete repository index"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                     <CardTitle className="text-base font-semibold text-white truncate">
                       {project.name}
